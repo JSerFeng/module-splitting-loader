@@ -73,7 +73,7 @@ const cache = new Map<string, SplitResult | null>();
  */
 export default function moduleSplittingLoader(source: string): void {
   // @ts-expect-error -- loader context is provided by webpack/rspack
-  const ctx = this as { resourcePath: string; resourceQuery: string; async: () => (err: Error | null, result?: string) => void };
+  const ctx = this as { resourcePath: string; resourceQuery: string; async: () => (err: Error | null, result?: string) => void; _module?: any };
   const callback = ctx.async();
   const resourcePath = ctx.resourcePath;
   const resourceQuery = ctx.resourceQuery || '';
@@ -108,6 +108,50 @@ export default function moduleSplittingLoader(source: string): void {
   // First invocation: analyze and return facade
   splitModule(source, resourcePath).then((result) => {
     cache.set(resourcePath, result);
+    if (result && ctx._module) {
+      // The facade is a pure re-export module; mark it side-effect-free
+      // so the bundler can bypass it and import parts directly.
+      ctx._module.factoryMeta.sideEffectFree = true;
+      ctx._module.buildMeta.sideEffectFree = true;
+    }
     callback(null, result ? result.facade : source);
   }, (err) => callback(err));
+}
+
+const QUERY_RE = /module-splitting-part/;
+
+/**
+ * Generate module rules that enable optimal tree-shaking with rspack/webpack.
+ *
+ * The facade module (pure re-exports) is marked `sideEffects: false` so the
+ * bundler can bypass it and connect entries directly to the split parts.
+ * Part modules retain their side-effect status.
+ *
+ * Usage:
+ * ```js
+ * const { createModuleRules } = require('module-splitting-loader');
+ * module.exports = {
+ *   module: { rules: createModuleRules({ test: /\.js$/ }) },
+ * };
+ * ```
+ */
+export function createModuleRules(options: {
+  test: RegExp;
+  use?: any[];
+}): any[] {
+  const use = options.use ?? ['module-splitting-loader'];
+
+  return [
+    {
+      test: options.test,
+      resourceQuery: { not: [QUERY_RE] },
+      sideEffects: false,
+      use,
+    },
+    {
+      test: options.test,
+      resourceQuery: QUERY_RE,
+      use,
+    },
+  ];
 }

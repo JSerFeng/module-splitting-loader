@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { createRequire } from 'node:module';
+import { createModuleRules } from '../src/index.js';
 
 const LOADER_PATH = path.resolve(process.cwd(), 'dist', 'index.js');
 const _require = createRequire(import.meta.url);
@@ -206,6 +207,51 @@ describe('rspack integration', () => {
       const result = loadBundle(path.join(outDir, 'main.js'));
       expect(result.msg).toBe('hello');
       expect(result.val).toBe(42);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test('splits parts into separate entry chunks with createModuleRules', async () => {
+    const { dir, outDir, cleanup } = createFixture({
+      'lib.js': [
+        "console.log('side-effect');",
+        'export const a = () => "VALUE_A";',
+        'export const b = () => "VALUE_B";',
+      ].join('\n'),
+      'entry1.js': "import { a } from './lib';\na;",
+      'entry2.js': "import { b } from './lib';\nb;",
+    });
+
+    try {
+      const rules = createModuleRules({ test: /\.js$/, use: [LOADER_PATH] });
+      const stats = await build({
+        context: dir,
+        entry: { entry1: './entry1.js', entry2: './entry2.js' },
+        output: { path: outDir, filename: '[name].js', clean: true },
+        module: { rules },
+        optimization: { minimize: false },
+        target: 'node',
+      });
+      expect(stats.hasErrors()).toBe(false);
+
+      const files = fs.readdirSync(outDir).sort();
+      const readFile = (name: string) =>
+        fs.readFileSync(path.join(outDir, name), 'utf-8');
+
+      // entry1 should contain VALUE_A but NOT VALUE_B
+      const entry1 = readFile('entry1.js');
+      expect(entry1).toContain('VALUE_A');
+      expect(entry1).not.toContain('VALUE_B');
+
+      // entry2 should contain VALUE_B but NOT VALUE_A
+      const entry2 = readFile('entry2.js');
+      expect(entry2).toContain('VALUE_B');
+      expect(entry2).not.toContain('VALUE_A');
+
+      // Side-effect should be in a shared chunk, not removed
+      const allContent = files.map((f) => readFile(f)).join('\n');
+      expect(allContent).toContain('side-effect');
     } finally {
       cleanup();
     }
