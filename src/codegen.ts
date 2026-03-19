@@ -23,21 +23,10 @@ export function generateFacade(
 ): string {
   const lines: string[] = [];
 
-  // 1. Bare imports pass through
-  for (const src of analysis.bareImports) {
-    lines.push(`import ${JSON.stringify(src)};`);
-  }
-
-  // 2. Import side-effect part (empty exportDepSet = side-effect part)
-  for (const part of parts) {
-    if (part.exportDepSet.size === 0 && part.stmtIndices.length > 0) {
-      lines.push(
-        `import ${JSON.stringify(resourcePath + '?module-splitting-part=' + part.index)};`,
-      );
-    }
-  }
-
-  // 3. Re-export from each part that has exports
+  // Re-export from each part that has exports
+  // Note: bare imports and side-effect part imports are NOT placed here.
+  // They are emitted in each content part instead, so the facade remains
+  // a pure re-export module that bundlers can fully inline via scope hoisting.
   // Build a map: partIndex → export entries for that part
   const partExportMap = new Map<number, { localName: string; exportedAs: string }[]>();
 
@@ -71,7 +60,7 @@ export function generateFacade(
     );
   }
 
-  // 4. Re-exports pass through unchanged
+  // Re-exports pass through unchanged
   for (const re of analysis.reExports) {
     lines.push(re.code);
   }
@@ -90,7 +79,38 @@ export function generatePartSource(
 ): string {
   const lines: string[] = [];
 
-  // 1. External imports this part needs
+  const isSideEffectPart =
+    part.exportDepSet.size === 0 && part.stmtIndices.length > 0;
+
+  // 1. Bare imports (from the original module)
+  for (const src of analysis.bareImports) {
+    lines.push(`import ${JSON.stringify(src)};`);
+  }
+
+  // 2. Import side-effect parts (only for content parts, not for side-effect parts themselves)
+  //    Skip side-effect parts that depend on bindings from this content part
+  //    to avoid circular imports (e.g. `export const a = 1; console.log(a);`).
+  if (!isSideEffectPart) {
+    for (const other of allParts) {
+      if (
+        other.index !== part.index &&
+        other.exportDepSet.size === 0 &&
+        other.stmtIndices.length > 0
+      ) {
+        // Check if the side-effect part imports from this content part
+        const wouldCycle = [...other.requiredBindings.values()].some(
+          (srcPartIdx) => srcPartIdx === part.index,
+        );
+        if (!wouldCycle) {
+          lines.push(
+            `import ${JSON.stringify(resourcePath + '?module-splitting-part=' + other.index)};`,
+          );
+        }
+      }
+    }
+  }
+
+  // 3. External imports this part needs
   for (const imp of part.externalImports) {
     if (imp.isBareImport) {
       lines.push(`import ${JSON.stringify(imp.source)};`);
@@ -127,7 +147,7 @@ export function generatePartSource(
     }
   }
 
-  // 2. Inter-part imports
+  // 4. Inter-part imports
   const partImports = new Map<number, string[]>();
   for (const [binding, partIdx] of part.requiredBindings) {
     if (!partImports.has(partIdx)) partImports.set(partIdx, []);
@@ -140,7 +160,7 @@ export function generatePartSource(
     );
   }
 
-  // 3. Declaration code (in original order)
+  // 5. Declaration code (in original order)
   const sortedIndices = [...part.stmtIndices].sort((a, b) => a - b);
   for (const idx of sortedIndices) {
     const stmt = analysis.statements[idx];
@@ -155,7 +175,7 @@ export function generatePartSource(
     lines.push(code);
   }
 
-  // 4. Compute which bindings to export from this part
+  // 6. Compute which bindings to export from this part
   // Export bindings that are: (a) original module exports, or (b) needed by other parts
   const bindingsToExport = new Set<string>();
   for (const b of part.providedBindings) {
