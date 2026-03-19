@@ -60,8 +60,11 @@ export async function analyzeModule(source: string): Promise<ModuleAnalysis> {
     target: 'es2022',
   });
 
-  // SWC spans are 1-indexed; subtract the module's base offset
-  const baseOffset = ast.span.start;
+  // SWC spans use global byte positions; ast.span.start points to
+  // the first non-whitespace content, so subtract leading whitespace
+  // length to get the position corresponding to source[0].
+  const leadingWsLen = source.length - source.trimStart().length;
+  const baseOffset = ast.span.start - leadingWsLen;
   const slice = (span: { start: number; end: number }) =>
     source.slice(span.start - baseOffset, span.end - baseOffset);
 
