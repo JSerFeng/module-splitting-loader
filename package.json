@@ -1,0 +1,32 @@
+{
+  "name": "module-splitting-loader",
+  "version": "0.1.0",
+  "description": "A webpack/rspack loader that splits ES modules into smaller parts for better tree-shaking",
+  "license": "MIT",
+  "author": "jserfeng",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rslib build",
+    "test": "rstest run"
+  },
+  "devDependencies": {
+    "@rslib/core": "^0.6.0",
+    "@rstest/core": "^0.6.0",
+    "@swc/core": "^1.11.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "@swc/core": ">=1.3.0"
+  }
+}
