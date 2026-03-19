@@ -88,6 +88,8 @@ export function generatePartSource(
   }
 
   // 2. Import side-effect parts (only for content parts, not for side-effect parts themselves)
+  //    Skip side-effect parts that depend on bindings from this content part
+  //    to avoid circular imports (e.g. `export const a = 1; console.log(a);`).
   if (!isSideEffectPart) {
     for (const other of allParts) {
       if (
@@ -95,9 +97,15 @@ export function generatePartSource(
         other.exportDepSet.size === 0 &&
         other.stmtIndices.length > 0
       ) {
-        lines.push(
-          `import ${JSON.stringify(resourcePath + '?module-splitting-part=' + other.index)};`,
+        // Check if the side-effect part imports from this content part
+        const wouldCycle = [...other.requiredBindings.values()].some(
+          (srcPartIdx) => srcPartIdx === part.index,
         );
+        if (!wouldCycle) {
+          lines.push(
+            `import ${JSON.stringify(resourcePath + '?module-splitting-part=' + other.index)};`,
+          );
+        }
       }
     }
   }

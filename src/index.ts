@@ -73,7 +73,7 @@ const cache = new Map<string, SplitResult | null>();
  */
 export default function moduleSplittingLoader(source: string): void {
   // @ts-expect-error -- loader context is provided by webpack/rspack
-  const ctx = this as { resourcePath: string; resourceQuery: string; async: () => (err: Error | null, result?: string) => void; _module?: any };
+  const ctx = this as { resourcePath: string; resourceQuery: string; async: () => (err: Error | null, result?: string) => void };
   const callback = ctx.async();
   const resourcePath = ctx.resourcePath;
   const resourceQuery = ctx.resourceQuery || '';
@@ -108,12 +108,6 @@ export default function moduleSplittingLoader(source: string): void {
   // First invocation: analyze and return facade
   splitModule(source, resourcePath).then((result) => {
     cache.set(resourcePath, result);
-    if (result && ctx._module) {
-      // The facade is a pure re-export module; mark it side-effect-free
-      // so the bundler can bypass it and import parts directly.
-      ctx._module.factoryMeta.sideEffectFree = true;
-      ctx._module.buildMeta.sideEffectFree = true;
-    }
     callback(null, result ? result.facade : source);
   }, (err) => callback(err));
 }

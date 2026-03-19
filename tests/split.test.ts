@@ -131,6 +131,31 @@ describe('splitModule', () => {
     }
   });
 
+  test('avoids circular import when side-effect references exported binding', async () => {
+    const source = [
+      `export const a = 1;`,
+      `console.log(a);`,
+      `export const b = 2;`,
+    ].join('\n');
+    const result = await splitModule(source, '/test/mod.js');
+
+    expect(result).not.toBeNull();
+    // The side-effect part references `a`, so it imports from part containing `a`.
+    // Part containing `a` must NOT import the side-effect part back (would cycle).
+    const partWithA = result!.partSources.find(
+      (p) => p.includes('const a') && p.includes('export {'),
+    );
+    expect(partWithA).toBeDefined();
+    // partWithA should NOT have a bare import of the side-effect part
+    const bareImports = partWithA!
+      .split('\n')
+      .filter(
+        (l) =>
+          l.startsWith('import "') || l.startsWith("import '"),
+      );
+    expect(bareImports.length).toBe(0);
+  });
+
   test('distributes external imports to correct parts', async () => {
     const source = [
       `import { foo } from 'lib-a';`,
