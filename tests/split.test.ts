@@ -112,13 +112,23 @@ describe('splitModule', () => {
     const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
-    // Should have a side-effect part that's always imported
+    // Facade should be pure re-exports (no side-effect imports)
     const facade = result!.facade;
-    // Side-effect part import (import without export)
-    const importLines = facade
+    const facadeImports = facade
       .split('\n')
       .filter((l) => l.startsWith('import') && !l.includes('export'));
-    expect(importLines.length).toBeGreaterThan(0);
+    expect(facadeImports.length).toBe(0);
+
+    // Side-effect part imports should be in content parts instead
+    const contentParts = result!.partSources.filter(
+      (p) => p.includes('export {'),
+    );
+    for (const part of contentParts) {
+      const sideEffectImports = part
+        .split('\n')
+        .filter((l) => l.startsWith('import') && !l.includes('export'));
+      expect(sideEffectImports.length).toBeGreaterThan(0);
+    }
   });
 
   test('distributes external imports to correct parts', async () => {
