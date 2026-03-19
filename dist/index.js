@@ -39,8 +39,8 @@ function extractBindingsFromDeclaration(decl) {
             return [];
     }
 }
-function analyzeModule(source) {
-    const ast = (0, __WEBPACK_EXTERNAL_MODULE__swc_core_81ba23c0__.parseSync)(source, {
+async function analyzeModule(source) {
+    const ast = await (0, __WEBPACK_EXTERNAL_MODULE__swc_core_81ba23c0__.parse)(source, {
         syntax: "ecmascript",
         target: 'es2022'
     });
@@ -502,8 +502,8 @@ function generatePartSource(analysis, part, allParts, resourcePath) {
     }
     return lines.join('\n');
 }
-function splitModule(source, resourcePath) {
-    const analysis = analyzeModule(source);
+async function splitModule(source, resourcePath) {
+    const analysis = await analyzeModule(source);
     if (analysis.exports.length <= 1) return null;
     collectReferences(analysis.statements, analysis.bindingToStmt);
     const adjList = buildDependencyGraph(analysis.statements, analysis.bindingToStmt);
@@ -526,6 +526,7 @@ function splitModule(source, resourcePath) {
 const cache = new Map();
 function moduleSplittingLoader(source) {
     const ctx = this;
+    const callback = ctx.async();
     const resourcePath = ctx.resourcePath;
     const resourceQuery = ctx.resourceQuery || '';
     const params = new URLSearchParams(resourceQuery.startsWith('?') ? resourceQuery.slice(1) : resourceQuery);
@@ -534,19 +535,21 @@ function moduleSplittingLoader(source) {
         const cached = cache.get(resourcePath);
         if (cached) {
             const idx = parseInt(partParam, 10);
-            return cached.partSources[idx] ?? source;
+            callback(null, cached.partSources[idx] ?? source);
+            return;
         }
-        const result = splitModule(source, resourcePath);
-        if (result) {
-            cache.set(resourcePath, result);
-            const idx = parseInt(partParam, 10);
-            return result.partSources[idx] ?? source;
-        }
-        return source;
+        splitModule(source, resourcePath).then((result)=>{
+            if (result) {
+                cache.set(resourcePath, result);
+                const idx = parseInt(partParam, 10);
+                callback(null, result.partSources[idx] ?? source);
+            } else callback(null, source);
+        }, (err)=>callback(err));
+        return;
     }
-    const result = splitModule(source, resourcePath);
-    cache.set(resourcePath, result);
-    if (!result) return source;
-    return result.facade;
+    splitModule(source, resourcePath).then((result)=>{
+        cache.set(resourcePath, result);
+        callback(null, result ? result.facade : source);
+    }, (err)=>callback(err));
 }
 export { moduleSplittingLoader as default, splitModule };
