@@ -11,11 +11,11 @@ import type { SplitResult } from './types.js';
  *
  * Returns null if splitting is not beneficial.
  */
-export function splitModule(
+export async function splitModule(
   source: string,
   resourcePath: string,
-): SplitResult | null {
-  const analysis = analyzeModule(source);
+): Promise<SplitResult | null> {
+  const analysis = await analyzeModule(source);
 
   // Skip splitting if ≤1 export
   if (analysis.exports.length <= 1) {
@@ -71,9 +71,10 @@ const cache = new Map<string, SplitResult | null>();
  * First invocation (no query): returns facade that re-exports from parts.
  * Subsequent invocations (?module-splitting-part=N): returns the Nth part.
  */
-export default function moduleSplittingLoader(source: string): string {
+export default function moduleSplittingLoader(source: string): void {
   // @ts-expect-error -- loader context is provided by webpack/rspack
-  const ctx = this as { resourcePath: string; resourceQuery: string };
+  const ctx = this as { resourcePath: string; resourceQuery: string; async: () => (err: Error | null, result?: string) => void };
+  const callback = ctx.async();
   const resourcePath = ctx.resourcePath;
   const resourceQuery = ctx.resourceQuery || '';
 
@@ -88,25 +89,25 @@ export default function moduleSplittingLoader(source: string): string {
     const cached = cache.get(resourcePath);
     if (cached) {
       const idx = parseInt(partParam, 10);
-      return cached.partSources[idx] ?? source;
+      callback(null, cached.partSources[idx] ?? source);
+      return;
     }
     // If not cached, analyze on the fly
-    const result = splitModule(source, resourcePath);
-    if (result) {
-      cache.set(resourcePath, result);
-      const idx = parseInt(partParam, 10);
-      return result.partSources[idx] ?? source;
-    }
-    return source;
+    splitModule(source, resourcePath).then((result) => {
+      if (result) {
+        cache.set(resourcePath, result);
+        const idx = parseInt(partParam, 10);
+        callback(null, result.partSources[idx] ?? source);
+      } else {
+        callback(null, source);
+      }
+    }, (err) => callback(err));
+    return;
   }
 
   // First invocation: analyze and return facade
-  const result = splitModule(source, resourcePath);
-  cache.set(resourcePath, result);
-
-  if (!result) {
-    return source;
-  }
-
-  return result.facade;
+  splitModule(source, resourcePath).then((result) => {
+    cache.set(resourcePath, result);
+    callback(null, result ? result.facade : source);
+  }, (err) => callback(err));
 }

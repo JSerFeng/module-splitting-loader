@@ -1,4 +1,4 @@
-import { parseSync } from '@swc/core';
+import { parse } from '@swc/core';
 import type {
   ModuleAnalysis,
   StatementInfo,
@@ -54,8 +54,8 @@ function extractBindingsFromDeclaration(decl: any): string[] {
   }
 }
 
-export function analyzeModule(source: string): ModuleAnalysis {
-  const ast = parseSync(source, {
+export async function analyzeModule(source: string): Promise<ModuleAnalysis> {
+  const ast = await parse(source, {
     syntax: 'ecmascript',
     target: 'es2022',
   });

@@ -2,9 +2,9 @@ import { describe, test, expect } from '@rstest/core';
 import { splitModule } from '../src/index.js';
 
 describe('splitModule', () => {
-  test('splits two independent exports into separate parts', () => {
+  test('splits two independent exports into separate parts', async () => {
     const source = `export const a = 1;\nexport const b = 2;`;
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     expect(result!.partSources.length).toBeGreaterThanOrEqual(2);
@@ -19,7 +19,7 @@ describe('splitModule', () => {
     expect(allParts).toContain('const b = 2');
   });
 
-  test('splits shared dependency into its own part', () => {
+  test('splits shared dependency into its own part', async () => {
     const source = [
       `import { helper } from 'lib';`,
       `const shared = helper();`,
@@ -27,7 +27,7 @@ describe('splitModule', () => {
       `const b = shared + 2;`,
       `export { a, b };`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     // Should have 3 parts: shared, a (imports shared), b (imports shared)
@@ -53,49 +53,49 @@ describe('splitModule', () => {
     expect(partB).toContain('import { shared }');
   });
 
-  test('returns null for single export (no splitting needed)', () => {
+  test('returns null for single export (no splitting needed)', async () => {
     const source = `export const x = 1;`;
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
     expect(result).toBeNull();
   });
 
-  test('returns null for no exports', () => {
+  test('returns null for no exports', async () => {
     const source = `const x = 1;`;
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
     expect(result).toBeNull();
   });
 
-  test('handles mutual recursion (SCC) — all in one part', () => {
+  test('handles mutual recursion (SCC) — all in one part', async () => {
     const source = [
       `function a() { return b() + 1; }`,
       `function b() { return a() + 1; }`,
       `export { a, b };`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     // a and b form a cycle — they must stay in the same SCC.
     // Both exports depend on the same SCC → only 1 part → no split.
     expect(result).toBeNull();
   });
 
-  test('preserves re-exports in facade', () => {
+  test('preserves re-exports in facade', async () => {
     const source = [
       `export * from './other';`,
       `export const a = 1;`,
       `export const b = 2;`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     expect(result!.facade).toContain("export * from './other'");
   });
 
-  test('handles default export + named export', () => {
+  test('handles default export + named export', async () => {
     const source = [
       `export default function greet() { return 'hi'; }`,
       `export const x = 1;`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     // Facade should re-export both default and named
@@ -103,13 +103,13 @@ describe('splitModule', () => {
     expect(result!.facade).toContain('x');
   });
 
-  test('handles side-effect statements', () => {
+  test('handles side-effect statements', async () => {
     const source = [
       `console.log('init');`,
       `export const a = 1;`,
       `export const b = 2;`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     // Should have a side-effect part that's always imported
@@ -121,14 +121,14 @@ describe('splitModule', () => {
     expect(importLines.length).toBeGreaterThan(0);
   });
 
-  test('distributes external imports to correct parts', () => {
+  test('distributes external imports to correct parts', async () => {
     const source = [
       `import { foo } from 'lib-a';`,
       `import { bar } from 'lib-b';`,
       `export const a = foo();`,
       `export const b = bar();`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
 
@@ -144,7 +144,7 @@ describe('splitModule', () => {
     expect(partB).not.toContain('from "lib-a"');
   });
 
-  test('complex: diamond dependency', () => {
+  test('complex: diamond dependency', async () => {
     const source = [
       `const base = 1;`,
       `const left = base + 1;`,
@@ -153,7 +153,7 @@ describe('splitModule', () => {
       `export const expA = a;`,
       `export const expB = base;`,
     ].join('\n');
-    const result = splitModule(source, '/test/mod.js');
+    const result = await splitModule(source, '/test/mod.js');
 
     expect(result).not.toBeNull();
     // All parts together should contain all declarations
