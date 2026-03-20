@@ -1,0 +1,10 @@
+{
+  "name": "basic-rspack-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ./build.mjs",
+    "build:no-loader": "node ./build.mjs ./rspack.no-loader.config.mjs",
+    "compare": "node ./compare.mjs"
+  }
+}
