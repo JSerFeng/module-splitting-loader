@@ -5,7 +5,16 @@ export default defineConfig({
     {
       format: 'esm',
       syntax: 'es2021',
-      dts: true,
+      dts: {
+        autoExtension: true,
+      },
+    },
+    {
+      format: 'cjs',
+      syntax: 'es2021',
+      dts: {
+        autoExtension: true,
+      },
     },
   ],
   source: {
