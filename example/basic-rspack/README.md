@@ -1,13 +1,16 @@
 # basic-rspack
 
-This example shows how to use `module-splitting-loader` in Rspack.
+This example shows the sync/async case where the initial chunk uses export `a`, an async chunk uses export `b`, and `module-splitting-loader` keeps `b` out of the initial chunk.
 
 ## Files
 
-- `src/features.js`: an ES module that will be split by the loader
-- `src/index.js`: imports and uses only one export from `features.js`
+- `src/lib.js`: one module that exports both the initial-path code and the async-only code
+- `src/index.js`: uses `renderAboveTheFold` in the initial chunk and dynamically imports `async-panel.js`
+- `src/async-panel.js`: uses `renderBelowTheFold` in the async chunk
 - `rspack.config.mjs`: enables the loader in `module.rules`
+- `rspack.no-loader.config.mjs`: same build without the loader
 - `build.mjs`: runs the build through the `@rspack/core` Node API
+- `compare.mjs`: rebuilds both variants and checks the generated bundles
 
 ## Run
 
@@ -21,48 +24,52 @@ Then run the example from this directory:
 
 ```bash
 pnpm build
-node dist/main.js
+node dist/main.cjs
 ```
 
 Expected output:
 
 ```text
-Hello, Rspack!
+main:ABOVE_THE_FOLD_OK
+async:ASYNC_ONLY_B_MARKER:cyan:lime:amber
 ```
 
 ## What The Split Changes
 
-In this example, `src/features.js` exports both `greet` and `farewell`, but the entry only imports `greet`.
+`src/lib.js` contains:
+
+- `renderAboveTheFold`, which is needed by the initial chunk
+- `renderBelowTheFold`, which is only needed by the async chunk
+- an `asyncOnlyPayload` constant that belongs only to `renderBelowTheFold`
 
 With `module-splitting-loader` enabled:
 
-- Rspack loads a generated split part such as `./src/features.js?module-splitting-part=0`
-- the final bundle keeps only the part that contains `greet`
-- the unused `farewell` export is not emitted into `dist/main.js`
+- Rspack rewrites `lib.js` into a facade plus split parts
+- the config marks `?module-splitting-part=` requests as `sideEffects: false` for this pure example, so Rspack can drop an unused split part from the initial graph
+- the part for `renderAboveTheFold` stays in `main.cjs`
+- the part for `renderBelowTheFold` moves to `async-panel.chunk.cjs`
+- the initial chunk no longer carries the `ASYNC_ONLY_B_MARKER` payload
 
 Without the loader:
 
-- Rspack still bundles the original `./src/features.js` as a single module
-- because `minimize` is disabled in this example, the unused `farewell` function still appears in `dist-no-loader/main.js`
-- this makes the output larger and shows the exact problem that the loader is solving here
+- Rspack still treats `lib.js` as one module
+- because the initial chunk already needs export `a`, the whole `lib.js` module ends up in the initial chunk
+- the async-only payload for export `b` therefore appears in `main.cjs` too
 
-You can verify the difference directly:
+This is the key point: normal tree shaking can mark exports as used or unused, but it still works at module granularity. If one sync path and one async path share the same `lib.js`, the sync chunk can end up paying for async-only code. Module splitting changes the module graph so that `a` and `b` become independently chunkable parts.
+
+To verify the difference end-to-end:
 
 ```bash
-rg "UNUSED_EXAMPLE_EXPORT" dist/main.js
-pnpm build:no-loader
-rg "UNUSED_EXAMPLE_EXPORT" dist-no-loader/main.js
+pnpm compare
 ```
 
-Expected result:
+The comparison checks:
 
-- `dist/main.js`: no match
-- `dist-no-loader/main.js`: contains `UNUSED_EXAMPLE_EXPORT`
-
-In the current build, the split bundle is also smaller:
-
-- `dist/main.js`: 564 bytes
-- `dist-no-loader/main.js`: 622 bytes
+- `dist/main.cjs` does not contain `ASYNC_ONLY_B_MARKER`
+- `dist/async-panel.chunk.cjs` does contain `ASYNC_ONLY_B_MARKER`
+- `dist-no-loader/main.cjs` does contain `ASYNC_ONLY_B_MARKER`
+- the split build makes the initial chunk smaller than the no-loader build
 
 If you only want the integration snippet, the key part is in `rspack.config.mjs`:
 
@@ -70,7 +77,11 @@ If you only want the integration snippet, the key part is in `rspack.config.mjs`
 module: {
   rules: [
     {
-      test: /features\.js$/,
+      resourceQuery: /module-splitting-part=/,
+      sideEffects: false,
+    },
+    {
+      test: /lib\.js$/,
       use: [loaderPath],
     },
   ],

@@ -1,3 +1,9 @@
-import { greet } from './features.js';
+import { renderAboveTheFold } from './lib.js';
 
-console.log(greet('Rspack'));
+console.log(`main:${renderAboveTheFold()}`);
+
+import(/* webpackChunkName: "async-panel" */ './async-panel.js').then(
+  ({ runAsyncPanel }) => {
+    console.log(`async:${runAsyncPanel()}`);
+  },
+);

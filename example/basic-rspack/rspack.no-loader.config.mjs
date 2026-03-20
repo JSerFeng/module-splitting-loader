@@ -11,13 +11,14 @@ export default {
   target: 'node',
   output: {
     path: path.resolve(__dirname, 'dist-no-loader'),
-    filename: 'main.js',
+    filename: 'main.cjs',
+    chunkFilename: '[name].chunk.cjs',
     clean: true,
   },
   optimization: {
     usedExports: true,
     providedExports: true,
     sideEffects: true,
-    minimize: false,
+    minimize: true,
   },
 };

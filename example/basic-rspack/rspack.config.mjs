@@ -12,19 +12,24 @@ export default {
   target: 'node',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'main.js',
+    filename: 'main.cjs',
+    chunkFilename: '[name].chunk.cjs',
     clean: true,
   },
   optimization: {
     usedExports: true,
     providedExports: true,
     sideEffects: true,
-    minimize: false,
+    minimize: true,
   },
   module: {
     rules: [
       {
-        test: /features\.js$/,
+        resourceQuery: /module-splitting-part=/,
+        sideEffects: false,
+      },
+      {
+        test: /lib\.js$/,
         use: [loaderPath],
       },
     ],

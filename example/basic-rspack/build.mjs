@@ -1,6 +1,10 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { rspack } from '@rspack/core';
+import { createRequire } from 'node:module';
+
+const repoRoot = path.resolve(process.cwd(), '../..');
+const repoRequire = createRequire(path.join(repoRoot, 'package.json'));
+const { rspack } = repoRequire('@rspack/core');
 
 const configArg = process.argv[2] ?? './rspack.config.mjs';
 const configUrl = pathToFileURL(path.resolve(process.cwd(), configArg)).href;
